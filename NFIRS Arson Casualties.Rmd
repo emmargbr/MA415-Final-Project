@@ -1,0 +1,571 @@
+---
+title: "NFIRS Arson Casualties"
+author: "Emma Brown"
+output: pdf_document
+---
+
+This project investigates casualties due to arson in the United States from 2010 to 2015.
+
+The data comes from the National Fire Incident Reporting System (NFIRS). The data was cleaned and organized by time data, such as month and year, demographic data, such as gender and race, and location data, including city, state, and zip code.
+
+Of the deliverable files, the relevant files to this project were arson, civiliancasualty, and incidentaddress. Code lookup was also included to ensure coding consistency across dbf files. 
+
+Libraries were loaded
+```{r}
+require(dplyr)
+require(tidyr)
+require(foreign)
+require(data.table)
+require(ggplot2)
+require(maps)
+require(mapproj)
+require(devtools)
+require(choroplethr)
+require(stringr)
+require(zipcode)
+require(ggmap)
+require(knitr)
+require(reshape2)
+data(zipcode)
+data(state)
+```
+
+I first looked at 2010.
+```{r}
+# Load the relevant files
+arson <- read.dbf("arson2010.dbf")
+arson$YEAR <- 2010
+code_lookup <- read.dbf("codelookup2010.dbf")
+incidentaddress <- read.dbf("incidentaddress2010.dbf")
+civiliancasualty <- read.dbf("civiliancasualty2010.dbf")
+civiliancasualty$YEAR <- 2010
+```
+
+Now let's start cleaning. 
+Some relevant attributes were selected. Including ID attributes to join databases.
+```{r}
+civiliancasualty <- civiliancasualty %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER, AGE, RACE, SEV)
+arson <- arson %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO)
+```
+
+Changed the levels of civilian casualties according to their code lookup classification. Got rid of any unknowns because we're only interested in injuries and casualties. Then changed the race and gender levels according to code lookup for better looking data frame.
+```{r}
+levels(civiliancasualty$SEV) <- c("Mild",
+                                  "Moderate",
+                                  "Severe",
+                                  "Life Threatening",
+                                  "Death",
+                                  "Unknown")
+# Remove Unknowns
+civiliancasualty <- civiliancasualty %>%
+  filter(SEV != "Unknown")
+# Race Levels
+levels(civiliancasualty$RACE) <- c("NA",
+                                   "White",
+                                   "Black",
+                                   "American Indian",
+                                   "Asian",
+                                   "Native Hawaiian",
+                                   "NA")
+# Gender Levels
+levels(civiliancasualty$GENDER) <- c("Male",
+                                     "Female")
+```
+Now let's start putting some data together...
+I joined the arson and civilian casualty data frames to find the civilian casualty from arson.
+Then joined that data frame with incident address to find the location of arson incidents
+```{r}
+# joins the casualty dbf with arson dbf to find civilian casualties from arson
+arsoncasualties <- semi_join(civiliancasualty, arson,
+                             by=c('INC_NO'='INC_NO', 'STATE'='STATE',
+                                  'INC_DATE'='INC_DATE'))
+
+# joins to find incident addresses
+arsoncasualties <- left_join(arsoncasualties, incidentaddress)
+arsoncasualties <- arsoncasualties %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER,
+         AGE, RACE, SEV, STREETNAME, STREETTYPE,
+         CITY, ZIP=ZIP5)
+```
+To look at some of this data, I made a data frame of frequencies of arson incidents with casualties by state.
+```{r}
+# Frequency by state
+arsonbystate <- arsoncasualties %>%
+  group_by(STATE) %>%
+  summarise(CASUALTIES=n())
+```
+
+Then I reformatted the dates to find the month of each incident. Then I saved the data frame to its respective year to combine later.
+
+```{r}
+arsoncasualties$INC_DATE <- str_pad(arsoncasualties$INC_DATE, 8, pad="0")
+arsoncasualties <- transform(arsoncasualties, INC_DATE = as.Date(as.character(INC_DATE), "%m%d%Y"))
+arsoncasualties$MONTH <- format(as.Date(arsoncasualties$INC_DATE, "%m"))
+arsoncasualties$MONTH <- substr(arsoncasualties$INC_DATE, 6, 7)
+arsoncasualties$MONTH <- as.integer(arsoncasualties$MONTH)
+arsoncasualties$MONTH <- month.abb[arsoncasualties$MONTH]
+arsoncasualties_2010 <- arsoncasualties
+```
+
+
+Now for 2011:
+```{r}
+arson <- read.dbf("arson2011.dbf")
+arson$YEAR <- 2011
+code_lookup <- read.dbf("codelookup2011.dbf")
+incidentaddress <- read.dbf("incidentaddress2011.dbf")
+
+# Civilian Casualties
+civiliancasualty <- read.dbf("civilian2011.dbf")
+# Select Column Names
+civiliancasualty$YEAR <- 2011
+civiliancasualty <- civiliancasualty %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER, AGE, RACE, SEV)
+# Select Column Names
+arson <- arson %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO)
+
+# Change Severity levels
+levels(civiliancasualty$SEV) <- c("Mild",
+                                  "Moderate",
+                                  "Severe",
+                                  "Life Threatening",
+                                  "Death",
+                                  "Unknown")
+# Remove Unknowns
+civiliancasualty <- civiliancasualty %>%
+  filter(SEV != "Unknown")
+# Race Levels
+levels(civiliancasualty$RACE) <- c("NA",
+                                   "White",
+                                   "Black",
+                                   "American Indian",
+                                   "Asian",
+                                   "Native Hawaiian",
+                                   "NA")
+# Gender Levels
+levels(civiliancasualty$GENDER) <- c("Male",
+                                     "Female")
+# joins the casualty dbf with arson dbf to find civilian casualties from arson
+arsoncasualties <- semi_join(civiliancasualty, arson,
+                             by=c('INC_NO'='INC_NO', 'STATE'='STATE',
+                                  'INC_DATE'='INC_DATE'))
+
+# joins to find incident addresses
+arsoncasualties <- left_join(arsoncasualties, incidentaddress)
+arsoncasualties <- arsoncasualties %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER,
+         AGE, RACE, SEV, STREETNAME, STREETTYPE,
+         CITY, ZIP=ZIP5)
+
+# Frequency by state
+arsonbystate <- arsoncasualties %>%
+  group_by(STATE) %>%
+  summarise(count=n())
+
+arsoncasualties$INC_DATE <- str_pad(arsoncasualties$INC_DATE, 8, pad="0")
+arsoncasualties <- transform(arsoncasualties, INC_DATE = as.Date(as.character(INC_DATE), "%m%d%Y"))
+arsoncasualties$MONTH <- format(as.Date(arsoncasualties$INC_DATE, "%m"))
+arsoncasualties$MONTH <- substr(arsoncasualties$INC_DATE, 6, 7)
+arsoncasualties$MONTH <- as.integer(arsoncasualties$MONTH)
+arsoncasualties$MONTH <- month.abb[arsoncasualties$MONTH]
+arsoncasualties_2011 <- arsoncasualties
+```
+
+On to 2012:
+With 2012 onward, the dataframes were in text files, which means we have to open them differently while perserving the headings and data, but the process is still generally the same.
+
+```{r}
+arson <- read.table("arson2012.txt",
+                    header=TRUE,
+                    sep="^")
+arson$YEAR <- 2012
+code_lookup <- read.table("codelookup2012.txt",
+                          header=TRUE,
+                          sep="^")
+incidentaddress <- read.table("incidentaddress2012.txt",
+                              header=TRUE,
+                              sep="^")
+
+# Civilian Casualties
+civiliancasualty <- read.table("civiliancasualty2012.txt",
+                               header=TRUE,
+                               sep="^")
+# Select Column Names
+civiliancasualty$YEAR <- 2012
+civiliancasualty <- civiliancasualty %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER, AGE, RACE, SEV)
+# Select Column Names
+arson <- arson %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO)
+
+# Change Severity levels
+levels(civiliancasualty$SEV) <- c("Mild",
+                                  "Moderate",
+                                  "Severe",
+                                  "Life Threatening",
+                                  "Death",
+                                  "Unknown")
+# Remove Unknowns
+civiliancasualty <- civiliancasualty %>%
+  filter(SEV != "Unknown")
+# Race Levels
+levels(civiliancasualty$RACE) <- c("NA",
+                                   "NA",
+                                   "White",
+                                   "Black",
+                                   "American Indian",
+                                   "Asian",
+                                   "Native Hawaiian",
+                                   "NA")
+# Gender Levels
+civiliancasualty$GENDER <- as.factor(civiliancasualty$GENDER)
+levels(civiliancasualty$GENDER) <- c("Male",
+                                     "Female")
+# joins the casualty dbf with arson dbf to find civilian casualties from arson
+arsoncasualties <- semi_join(civiliancasualty, arson,
+                             by=c('INC_NO'='INC_NO', 'STATE'='STATE',
+                                  'INC_DATE'='INC_DATE'))
+
+# joins to find incident addresses
+arsoncasualties <- left_join(arsoncasualties, incidentaddress)
+arsoncasualties <- arsoncasualties %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER,
+         AGE, RACE, SEV, STREETNAME, STREETTYPE,
+         CITY, ZIP=ZIP5)
+
+# Frequency by state
+arsonbystate <- arsoncasualties %>%
+  group_by(STATE) %>%
+  summarise(count=n())
+
+arsoncasualties$INC_DATE <- str_pad(arsoncasualties$INC_DATE, 8, pad="0")
+arsoncasualties <- transform(arsoncasualties, INC_DATE = as.Date(as.character(INC_DATE), "%m%d%Y"))
+arsoncasualties$MONTH <- format(as.Date(arsoncasualties$INC_DATE, "%m"))
+arsoncasualties$MONTH <- substr(arsoncasualties$INC_DATE, 6, 7)
+arsoncasualties$MONTH <- as.integer(arsoncasualties$MONTH)
+arsoncasualties$MONTH <- month.abb[arsoncasualties$MONTH]
+arsoncasualties_2012 <- arsoncasualties
+```
+
+And 2013:
+```{r}
+
+arson <- read.table("arson2013.txt",
+                    header=TRUE,
+                    sep="^")
+arson$YEAR <- 2013
+code_lookup <- read.table("codelookup2013.txt",
+                          header=TRUE,
+                          sep="^")
+incidentaddress <- read.table("incidentaddress2013.txt",
+                              header=TRUE,
+                              sep="^")
+
+# Civilian Casualties
+civiliancasualty <- read.table("civiliancasualty2013.txt",
+                               header=TRUE,
+                               sep="^")
+# Select Column Names
+civiliancasualty$YEAR <- 2013
+civiliancasualty <- civiliancasualty %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER, AGE, RACE, SEV)
+# Select Column Names
+arson <- arson %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO)
+
+# Change Severity levels
+levels(civiliancasualty$SEV) <- c("NA",
+                                  "Mild",
+                                  "Moderate",
+                                  "Severe",
+                                  "Life Threatening",
+                                  "Death",
+                                  "Unknown")
+# Remove Unknowns
+civiliancasualty <- civiliancasualty %>%
+  filter(SEV != "Unknown",
+         SEV != "NA")
+# Race Levels
+levels(civiliancasualty$RACE) <- c("NA",
+                                   "NA",
+                                   "White",
+                                   "Black",
+                                   "American Indian",
+                                   "Asian",
+                                   "Native Hawaiian",
+                                   "NA")
+# Gender Levels
+civiliancasualty$GENDER <- as.factor(civiliancasualty$GENDER)
+levels(civiliancasualty$GENDER) <- c("Male",
+                                     "Female")
+# joins the casualty dbf with arson dbf to find civilian casualties from arson
+arsoncasualties <- semi_join(civiliancasualty, arson,
+                             by=c('INC_NO'='INC_NO', 'STATE'='STATE',
+                                  'INC_DATE'='INC_DATE'))
+
+# joins to find incident addresses
+arsoncasualties <- left_join(arsoncasualties, incidentaddress)
+arsoncasualties <- arsoncasualties %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER,
+         AGE, RACE, SEV, STREETNAME, STREETTYPE,
+         CITY, ZIP=ZIP5)
+
+# Frequency by state
+arsonbystate <- arsoncasualties %>%
+  group_by(STATE) %>%
+  summarise(count=n())
+
+arsoncasualties$INC_DATE <- str_pad(arsoncasualties$INC_DATE, 8, pad="0")
+arsoncasualties <- transform(arsoncasualties, INC_DATE = as.Date(as.character(INC_DATE), "%m%d%Y"))
+arsoncasualties$MONTH <- format(as.Date(arsoncasualties$INC_DATE, "%m"))
+arsoncasualties$MONTH <- substr(arsoncasualties$INC_DATE, 6, 7)
+arsoncasualties$MONTH <- as.integer(arsoncasualties$MONTH)
+arsoncasualties$MONTH <- month.abb[arsoncasualties$MONTH]
+arsoncasualties_2013 <- arsoncasualties
+```
+
+2014:
+```{r}
+arson <- read.table("arson2014.txt",
+                    header=TRUE,
+                    sep="^")
+arson$YEAR <- 2014
+code_lookup <- read.table("codelookup2014.txt",
+                          header=TRUE,
+                          sep="^")
+incidentaddress <- read.table("incidentaddress2014.txt",
+                              header=TRUE,
+                              sep="^")
+
+# Civilian Casualties
+civiliancasualty <- read.table("civiliancasualty2014.txt",
+                               header=TRUE,
+                               sep="^")
+# Select Column Names
+civiliancasualty$YEAR <- 2014
+civiliancasualty <- civiliancasualty %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER, AGE, RACE, SEV)
+# Select Column Names
+arson <- arson %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO)
+
+# Change Severity levels
+levels(civiliancasualty$SEV) <- c("Mild",
+                                  "Moderate",
+                                  "Severe",
+                                  "Life Threatening",
+                                  "Death",
+                                  "Unknown")
+# Remove Unknowns
+civiliancasualty <- civiliancasualty %>%
+  filter(SEV != "Unknown")
+# Race Levels
+levels(civiliancasualty$RACE) <- c("NA",
+                                   "NA",
+                                   "White",
+                                   "Black",
+                                   "American Indian",
+                                   "Asian",
+                                   "Native Hawaiian",
+                                   "NA")
+# Gender Levels
+civiliancasualty$GENDER <- as.factor(civiliancasualty$GENDER)
+levels(civiliancasualty$GENDER) <- c("Male",
+                                     "Female")
+# joins the casualty dbf with arson dbf to find civilian casualties from arson
+arsoncasualties <- semi_join(civiliancasualty, arson,
+                             by=c('INC_NO'='INC_NO', 'STATE'='STATE',
+                                  'INC_DATE'='INC_DATE'))
+
+# joins to find incident addresses
+arsoncasualties <- left_join(arsoncasualties, incidentaddress)
+arsoncasualties <- arsoncasualties %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER,
+         AGE, RACE, SEV, STREETNAME, STREETTYPE,
+         CITY, ZIP=ZIP5)
+
+# Frequency by state
+arsonbystate <- arsoncasualties %>%
+  group_by(STATE) %>%
+  summarise(count=n())
+
+arsoncasualties$INC_DATE <- str_pad(arsoncasualties$INC_DATE, 8, pad="0")
+arsoncasualties <- transform(arsoncasualties, INC_DATE = as.Date(as.character(INC_DATE), "%m%d%Y"))
+arsoncasualties$MONTH <- format(as.Date(arsoncasualties$INC_DATE, "%m"))
+arsoncasualties$MONTH <- substr(arsoncasualties$INC_DATE, 6, 7)
+arsoncasualties$MONTH <- as.integer(arsoncasualties$MONTH)
+arsoncasualties$MONTH <- month.abb[arsoncasualties$MONTH]
+arsoncasualties_2014 <- arsoncasualties
+```
+
+
+And 2015:
+
+```{r}
+arson <- read.table("arson2015.txt",
+                    header=TRUE,
+                    sep="^")
+arson$YEAR <- 2015
+code_lookup <- read.table("codelookup2015.txt",
+                          header=TRUE,
+                          sep="^")
+incidentaddress <- read.table("incidentaddress2015.txt",
+                              header=TRUE,
+                              sep="^")
+
+# Civilian Casualties
+civiliancasualty <- read.table("civiliancasualty2015.txt",
+                               header=TRUE,
+                               sep="^")
+# Select Column Names
+civiliancasualty$YEAR <- 2015
+civiliancasualty <- civiliancasualty %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER, AGE, RACE, SEV)
+# Select Column Names
+arson <- arson %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO)
+
+# Change Severity levels
+levels(civiliancasualty$SEV) <- c("Mild",
+                                  "Moderate",
+                                  "Severe",
+                                  "Life Threatening",
+                                  "Death",
+                                  "Unknown")
+# Remove Unknowns
+civiliancasualty <- civiliancasualty %>%
+  filter(SEV != "Unknown")
+# Race Levels
+levels(civiliancasualty$RACE) <- c("NA",
+                                   "NA",
+                                   "White",
+                                   "Black",
+                                   "American Indian",
+                                   "Asian",
+                                   "Native Hawaiian",
+                                   "NA")
+# Gender Levels
+civiliancasualty$GENDER <- as.factor(civiliancasualty$GENDER)
+levels(civiliancasualty$GENDER) <- c("Male",
+                                     "Female")
+# joins the casualty dbf with arson dbf to find civilian casualties from arson
+arsoncasualties <- semi_join(civiliancasualty, arson,
+                             by=c('INC_NO'='INC_NO', 'STATE'='STATE',
+                                  'INC_DATE'='INC_DATE'))
+
+# joins to find incident addresses
+arsoncasualties <- left_join(arsoncasualties, incidentaddress)
+arsoncasualties <- arsoncasualties %>%
+  select(YEAR, STATE, FDID, INC_DATE, INC_NO, GENDER,
+         AGE, RACE, SEV, STREETNAME, STREETTYPE,
+         CITY, ZIP=ZIP5)
+
+# Frequency by state
+arsonbystate <- arsoncasualties %>%
+  group_by(STATE) %>%
+  summarise(count=n())
+
+arsoncasualties$INC_DATE <- str_pad(arsoncasualties$INC_DATE, 8, pad="0")
+arsoncasualties <- transform(arsoncasualties, INC_DATE = as.Date(as.character(INC_DATE), "%m%d%Y"))
+arsoncasualties$MONTH <- format(as.Date(arsoncasualties$INC_DATE, "%m"))
+arsoncasualties$MONTH <- substr(arsoncasualties$INC_DATE, 6, 7)
+arsoncasualties$MONTH <- as.integer(arsoncasualties$MONTH)
+arsoncasualties$MONTH <- month.abb[arsoncasualties$MONTH]
+arsoncasualties_2015 <- arsoncasualties
+```
+
+
+Finally, we combine all data frames into one.
+```{r}
+arson_2010_2015 <- do.call(rbind, 
+                                     list(arsoncasualties_2010,
+                                          arsoncasualties_2011,
+                                          arsoncasualties_2012,
+                                          arsoncasualties_2013,
+                                          arsoncasualties_2014,
+                                          arsoncasualties_2015))
+```
+
+Make sure they're unique. Then join the zipcode data to find the longitude and latitude of incident addresses.
+Select the final columns. 
+```{r}
+arson_2010_2015 <- unique(arson_2010_2015)
+arson_2010_2015 <- left_join(arson_2010_2015, zipcode, by=c("ZIP"="zip"))
+arson_2010_2015 <- arson_2010_2015 %>%
+  select(YEAR, MONTH, FDID, INC_DATE, GENDER, AGE, RACE,
+         SEV, CITY, STATE=state, ZIP, LAT=latitude,LON=longitude)
+```
+
+Removes the data frames from individual years from the workspace to avoid clutter.
+```{r}
+rm(arsoncasualties_2010,
+   arsoncasualties_2011,
+   arsoncasualties_2012,
+   arsoncasualties_2013,
+   arsoncasualties_2014,
+   arsoncasualties_2015)
+```
+
+Mapping all the casualties in the dataset
+```{r}
+
+map<-get_map(location='united states', zoom=4, maptype = "terrain",
+             source='google',color='color')
+map <- ggmap(map)
+
+map + geom_point(aes(x=LON, y=LAT, color=SEV), data=arson_2010_2015,
+                 alpha=.5, size=1) +
+  labs(x="Longitude", y="Latitude") +
+  ggtitle("Arson Casualties 2010-2015") +
+  scale_color_discrete(name="Severity of Casualty")
+```
+
+Let's group these to find the frequency of casualties for each year and make a table to display it
+
+```{r}
+arsonbyyear <- arson_2010_2015 %>%
+  group_by(YEAR) %>%
+  summarise(CASUALTIES=n()) %>%
+  mutate(PERCENT=CASUALTIES/sum(CASUALTIES))
+kable(arsonbyyear)
+```
+
+Now let's graph it
+```{r}
+ggplot(arsonbyyear, aes(YEAR, CASUALTIES)) +
+  geom_line() +
+  ggtitle("Arson Casualties 2010-2015")
+```
+
+Casualties have certainly gone down since 2010, but what about just casualties resulting in death?
+```{r}
+arsondeathsbyyear <- arson_2010_2015 %>%
+  filter(SEV=='Death') %>%
+  group_by(YEAR) %>%
+  summarise(DEATHS=n())
+kable(arsondeathsbyyear)
+
+ggplot(arsondeathsbyyear, aes(YEAR, DEATHS)) +
+  geom_line() +
+  ggtitle("Arson Deaths 2010-2015")
+
+write.csv(arsondeathsbyyear, "arsondeathsbyyear.csv",
+          quote=FALSE, row.names=FALSE)
+```
+
+There was a spike in 2011, and a significant decrease in 2013, but it has increased again.
+
+```{r}
+arsondeathsbystate <- arson_2010_2015 %>%
+  filter(SEV=='Death') %>%
+  group_by(YEAR,
+           STATE) %>%
+  summarise(DEATHS=n())
+
+write.csv(arsondeathsbystate, "arsondeathsbystate.csv",
+          quote=FALSE, row.names=FALSE)
+```
+
